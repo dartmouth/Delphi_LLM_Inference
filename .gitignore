@@ -1,0 +1,4 @@
+app/.streamlit
+app/.DS_Store
+app/__pycache__
+.env
