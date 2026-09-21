@@ -1,3 +1,7 @@
 streamlit
 langchain_dartmouth
 python-dotenv
+pandas
+numpy
+scipy
+openpyxl
