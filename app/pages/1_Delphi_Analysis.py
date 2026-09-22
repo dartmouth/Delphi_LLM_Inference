@@ -1,7 +1,14 @@
 import numpy as np
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 from scipy import stats
+
+COLOR_REACHED = "#0ca30c"
+COLOR_NOT_REACHED = "#d03b3b"
+COLOR_NEUTRAL = "#898781"
+COLOR_SEQUENTIAL = "#2a78d6"
 
 st.set_page_config(page_title="Delphi Consensus Analysis", page_icon="📊")
 
@@ -186,6 +193,156 @@ st.download_button(
     file_name="delphi_item_statistics.csv",
     mime="text/csv",
 )
+
+st.subheader("Visualizations")
+
+chartable = item_stats.dropna(subset=["Consensus reached"])
+if chartable.empty:
+    st.info("No items have enough responses to chart yet.")
+else:
+    st.markdown("#### Group items into survey topics")
+    st.caption(
+        "Assign each item to a topic to reproduce a stacked consensus chart "
+        "per topic (e.g. multiple items about 'Recording Access' grouped "
+        "together). Leave a topic as the item name to chart items individually."
+    )
+    topic_editor_key = f"topic_map_{hash(tuple(chartable.index))}"
+    default_topic_map = pd.DataFrame(
+        {"Item": chartable.index, "Topic": chartable.index}
+    )
+    topic_map_df = st.data_editor(
+        default_topic_map,
+        column_config={
+            "Item": st.column_config.TextColumn("Item", disabled=True),
+            "Topic": st.column_config.TextColumn("Topic"),
+        },
+        hide_index=True,
+        use_container_width=True,
+        key=topic_editor_key,
+    )
+    topic_map = (
+        topic_map_df.set_index("Item")["Topic"]
+        .replace("", pd.NA)
+        .fillna(pd.Series(topic_map_df["Item"].values, index=topic_map_df["Item"]))
+    )
+
+    chart_df = chartable.copy()
+    chart_df["Topic"] = chart_df.index.map(topic_map)
+    chart_df["Status"] = chart_df["Consensus reached"].map(
+        {True: "Reached Consensus", False: "Did Not Reach Consensus"}
+    )
+
+    st.markdown("#### Consensus outcomes by survey topic")
+    topic_counts = (
+        chart_df.groupby(["Topic", "Status"]).size().unstack(fill_value=0)
+    )
+    for status in ["Reached Consensus", "Did Not Reach Consensus"]:
+        if status not in topic_counts.columns:
+            topic_counts[status] = 0
+
+    fig_stack = go.Figure()
+    fig_stack.add_bar(
+        name="Reached Consensus",
+        x=topic_counts.index,
+        y=topic_counts["Reached Consensus"],
+        marker_color=COLOR_REACHED,
+        text=topic_counts["Reached Consensus"],
+        textposition="inside",
+    )
+    fig_stack.add_bar(
+        name="Did Not Reach Consensus",
+        x=topic_counts.index,
+        y=topic_counts["Did Not Reach Consensus"],
+        marker_color=COLOR_NOT_REACHED,
+        text=topic_counts["Did Not Reach Consensus"],
+        textposition="inside",
+    )
+    fig_stack.update_layout(
+        barmode="stack",
+        yaxis_title="Number of items",
+        xaxis_title="",
+        legend_title_text="",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+    )
+    st.plotly_chart(fig_stack, use_container_width=True)
+
+    col_pie, col_agreement = st.columns(2)
+
+    with col_pie:
+        st.markdown("#### Overall consensus outcome")
+        total_reached = int((chart_df["Status"] == "Reached Consensus").sum())
+        total_not_reached = int((chart_df["Status"] == "Did Not Reach Consensus").sum())
+        fig_pie = go.Figure(
+            data=[
+                go.Pie(
+                    labels=["Reached Consensus", "Did Not Reach Consensus"],
+                    values=[total_reached, total_not_reached],
+                    marker_colors=[COLOR_REACHED, COLOR_NOT_REACHED],
+                    hole=0.45,
+                    textinfo="label+percent+value",
+                    sort=False,
+                )
+            ]
+        )
+        fig_pie.update_layout(showlegend=False)
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    with col_agreement:
+        st.markdown("#### % agreement by item")
+        agreement_sorted = chart_df.sort_values("% Agreement")
+        bar_colors = [
+            COLOR_REACHED if reached else COLOR_NOT_REACHED
+            for reached in agreement_sorted["Consensus reached"]
+        ]
+        fig_agreement = go.Figure(
+            go.Bar(
+                x=agreement_sorted["% Agreement"],
+                y=agreement_sorted.index,
+                orientation="h",
+                marker_color=bar_colors,
+                text=[f"{v:.1f}%" for v in agreement_sorted["% Agreement"]],
+                textposition="outside",
+            )
+        )
+        fig_agreement.add_vline(
+            x=agreement_threshold,
+            line_dash="dash",
+            line_color=COLOR_NEUTRAL,
+            annotation_text=f"{agreement_threshold}% threshold",
+        )
+        fig_agreement.update_layout(
+            xaxis_title="% Agreement", yaxis_title="", xaxis_range=[0, 100]
+        )
+        st.plotly_chart(fig_agreement, use_container_width=True)
+
+    st.markdown("#### Rating distribution by item")
+    long_ratings = ratings[chartable.index].melt(var_name="Item", value_name="Rating").dropna()
+    long_ratings["Status"] = long_ratings["Item"].map(chart_df["Status"])
+    fig_box = px.box(
+        long_ratings,
+        x="Item",
+        y="Rating",
+        color="Status",
+        color_discrete_map={
+            "Reached Consensus": COLOR_REACHED,
+            "Did Not Reach Consensus": COLOR_NOT_REACHED,
+        },
+        points="outliers",
+    )
+    fig_box.update_layout(xaxis_title="", legend_title_text="")
+    st.plotly_chart(fig_box, use_container_width=True)
+
+    st.markdown("#### Mean rating by item (±1 SD)")
+    fig_mean = go.Figure(
+        go.Bar(
+            x=chartable.index,
+            y=chartable["Mean"],
+            marker_color=COLOR_SEQUENTIAL,
+            error_y=dict(type="data", array=chartable["SD"], visible=True),
+        )
+    )
+    fig_mean.update_layout(xaxis_title="", yaxis_title="Mean rating")
+    st.plotly_chart(fig_mean, use_container_width=True)
 
 st.subheader("Scale-level statistics")
 complete = ratings.dropna()
