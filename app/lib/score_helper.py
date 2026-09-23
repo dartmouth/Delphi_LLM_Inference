@@ -41,6 +41,15 @@ def compute_mean_scores(df_num: pd.DataFrame) -> pd.Series:
     return df_num.mean().sort_values(ascending=False)
 
 
+def compute_mean_scores_excluding_neutral(df_num: pd.DataFrame, neutral_value: float = 3) -> pd.Series:
+    """Mean score per question, ignoring neutral responses, sorted highest to lowest.
+
+    Neutral cells are masked to NaN for this calculation only; df_num itself
+    is left unchanged. A question with all-neutral responses yields NaN.
+    """
+    return df_num.where(df_num != neutral_value).mean().sort_values(ascending=False)
+
+
 def plot_mean_scores(
     mean_scores: pd.Series,
     scale_min: float = 1,
