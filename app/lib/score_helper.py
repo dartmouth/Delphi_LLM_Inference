@@ -2,8 +2,12 @@
 # Helper functions for scoring Likert-scale survey responses and
 # plotting the mean agreement per question.
 # ------------------------------------------------------------
+import matplotlib.figure
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import seaborn as sns
+from scipy.stats import gaussian_kde
 
 DEFAULT_LIKERT_MAP = {
     "Strongly disagree": 1,
@@ -48,6 +52,70 @@ def compute_mean_scores_excluding_neutral(df_num: pd.DataFrame, neutral_value: f
     is left unchanged. A question with all-neutral responses yields NaN.
     """
     return df_num.where(df_num != neutral_value).mean().sort_values(ascending=False)
+
+
+def compute_percent_agreement(
+    df_num: pd.DataFrame, consensus_lo: float, consensus_hi: float
+) -> pd.Series:
+    """Share (0-100) of non-missing responses per question inside [consensus_lo, consensus_hi]."""
+    in_zone = df_num.apply(lambda col: col.between(consensus_lo, consensus_hi))
+    return 100 * in_zone.sum() / df_num.notna().sum()
+
+
+def compute_consensus_reached(pct_agreement: pd.Series, threshold: float) -> pd.Series:
+    """Boolean per question: whether percent agreement meets the consensus threshold."""
+    return pct_agreement >= threshold
+
+
+def plot_question_ridgeline(
+    df_num: pd.DataFrame,
+    consensus_reached: pd.Series,
+    order: list = None,
+    scale_min: float = 1,
+    scale_max: float = 5,
+    bw_adjust: float = 1.0,
+    title: str = "Rating Distribution by Question",
+    color_reached: str = "#0ca30c",
+    color_not_reached: str = "#d03b3b",
+) -> matplotlib.figure.Figure:
+    """Ridgeline (joyplot) of the response distribution for every question.
+
+    Each question gets a stacked, KDE-smoothed density of its raw ratings,
+    filled in `color_reached`/`color_not_reached` depending on
+    `consensus_reached`, with a marker at the question's mean rating.
+    """
+    order = list(order) if order is not None else list(df_num.columns)
+    x = np.linspace(scale_min, scale_max, 200)
+
+    fig = matplotlib.figure.Figure(figsize=(7, max(3, 0.6 * len(order) + 1)))
+    ax = fig.add_subplot(111)
+
+    for i, col in enumerate(order):
+        values = df_num[col].dropna().to_numpy()
+        reached = bool(consensus_reached.get(col, False))
+        color = color_reached if reached else color_not_reached
+        if len(values) == 0:
+            continue
+        mean_val = values.mean()
+        if np.ptp(values) == 0:
+            # No variance: draw a spike instead of a degenerate KDE.
+            ax.plot([mean_val, mean_val], [i, i + 1], color=color, alpha=0.8, linewidth=2)
+        else:
+            kde = gaussian_kde(values)
+            kde.set_bandwidth(kde.factor * bw_adjust)
+            y = kde(x)
+            y_shifted = y / y.max() + i
+            ax.fill_between(x, i, y_shifted, color=color, alpha=0.8)
+        ax.plot(mean_val, i + 0.5, "o", mfc="white", color=color, mew=2)
+
+    ax.set_yticks([i + 0.5 for i in range(len(order))])
+    ax.set_yticklabels(order)
+    ax.set_xlim(scale_min, scale_max)
+    ax.set_xlabel(f"Rating ({scale_min:g}-{scale_max:g})")
+    ax.set_title(title)
+    sns.despine(ax=ax, left=True)
+    fig.tight_layout()
+    return fig
 
 
 def plot_mean_scores(

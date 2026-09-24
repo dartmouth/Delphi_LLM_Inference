@@ -1,4 +1,5 @@
 import sys
+from io import BytesIO
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -10,10 +11,13 @@ import streamlit as st
 
 from lib.score_helper import (
     DEFAULT_LIKERT_MAP,
+    compute_consensus_reached,
     compute_mean_scores,
+    compute_percent_agreement,
     load_data,
     map_likert_to_numeric,
     plot_mean_scores,
+    plot_question_ridgeline,
     select_question_columns,
 )
 
@@ -89,4 +93,39 @@ st.download_button(
     mean_scores.to_csv().encode("utf-8"),
     file_name="mean_scores.csv",
     mime="text/csv",
+)
+
+st.subheader("Rating distribution by question")
+st.sidebar.header("Consensus zone (for ridgeline colors)")
+default_lo = max(scale_min, scale_max - 2)
+consensus_lo, consensus_hi = st.sidebar.slider(
+    "Consensus zone",
+    min_value=float(scale_min),
+    max_value=float(scale_max),
+    value=(float(default_lo), float(scale_max)),
+    help="Ratings in this range count toward a question's percent agreement.",
+)
+agreement_threshold = st.sidebar.slider(
+    "Consensus-reached threshold (% agreement)", 0, 100, 75
+)
+
+pct_agreement = compute_percent_agreement(df_num[mean_scores.index], consensus_lo, consensus_hi)
+consensus_reached = compute_consensus_reached(pct_agreement, agreement_threshold)
+
+fig_ridge = plot_question_ridgeline(
+    df_num,
+    consensus_reached,
+    order=list(mean_scores.index),
+    scale_min=scale_min,
+    scale_max=scale_max,
+)
+st.pyplot(fig_ridge)
+
+svg_buffer = BytesIO()
+fig_ridge.savefig(svg_buffer, format="svg", transparent=True)
+st.download_button(
+    "Download ridgeline plot (SVG)",
+    svg_buffer.getvalue(),
+    file_name="rating_distribution_ridgeline.svg",
+    mime="image/svg+xml",
 )
