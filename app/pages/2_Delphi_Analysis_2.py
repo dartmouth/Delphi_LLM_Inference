@@ -14,6 +14,7 @@ from lib.score_helper import (
     compute_answer_counts,
     compute_consensus_reached,
     compute_mean_scores,
+    compute_mode_answer,
     compute_percent_agreement,
     load_data,
     map_likert_to_numeric,
@@ -87,6 +88,7 @@ stats_table = mean_scores.rename("Mean score").to_frame()
 if likert_map:
     categories = list(likert_map.keys())
     answer_counts = compute_answer_counts(df_raw[mean_scores.index.tolist()], categories)
+    stats_table["Most selected"] = compute_mode_answer(answer_counts)
     stats_table = stats_table.join(answer_counts)
 st.dataframe(stats_table)
 

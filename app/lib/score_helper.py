@@ -66,6 +66,18 @@ def compute_answer_counts(df: pd.DataFrame, categories: list) -> pd.DataFrame:
     return counts.reindex(categories).fillna(0).astype(int).T
 
 
+def compute_mode_answer(answer_counts: pd.DataFrame) -> pd.Series:
+    """Most-selected category per question, formatted as 'Category (count/total)'.
+
+    `answer_counts` is the per-question x per-category count table returned by
+    `compute_answer_counts`. Ties keep the first category in column order.
+    """
+    totals = answer_counts.sum(axis=1)
+    top_category = answer_counts.idxmax(axis=1)
+    top_count = answer_counts.max(axis=1)
+    return top_category + " (" + top_count.astype(str) + "/" + totals.astype(str) + ")"
+
+
 def compute_percent_agreement(
     df_num: pd.DataFrame, consensus_lo: float, consensus_hi: float
 ) -> pd.Series:
