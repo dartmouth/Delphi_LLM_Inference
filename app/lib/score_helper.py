@@ -54,6 +54,18 @@ def compute_mean_scores_excluding_neutral(df_num: pd.DataFrame, neutral_value: f
     return df_num.where(df_num != neutral_value).mean().sort_values(ascending=False)
 
 
+def compute_answer_counts(df: pd.DataFrame, categories: list) -> pd.DataFrame:
+    """Count of raw answers per category, for each column (question).
+
+    Whitespace is stripped from text answers first, matching
+    `map_likert_to_numeric`'s cleaning step. Categories with no matching
+    answers for a question are filled with 0.
+    """
+    cleaned = df.apply(lambda col: col.map(lambda x: x.strip() if isinstance(x, str) else x))
+    counts = cleaned.apply(lambda col: col.value_counts())
+    return counts.reindex(categories).fillna(0).astype(int).T
+
+
 def compute_percent_agreement(
     df_num: pd.DataFrame, consensus_lo: float, consensus_hi: float
 ) -> pd.Series:

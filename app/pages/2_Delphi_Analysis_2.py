@@ -11,6 +11,7 @@ import streamlit as st
 
 from lib.score_helper import (
     DEFAULT_LIKERT_MAP,
+    compute_answer_counts,
     compute_consensus_reached,
     compute_mean_scores,
     compute_percent_agreement,
@@ -81,8 +82,13 @@ if mean_scores.empty:
     st.warning("No numeric scores could be computed from the selected columns.")
     st.stop()
 
-st.subheader("Mean scores")
-st.dataframe(mean_scores.rename("Mean score").to_frame())
+st.subheader("Statistics")
+stats_table = mean_scores.rename("Mean score").to_frame()
+if likert_map:
+    categories = list(likert_map.keys())
+    answer_counts = compute_answer_counts(df_raw[mean_scores.index.tolist()], categories)
+    stats_table = stats_table.join(answer_counts)
+st.dataframe(stats_table)
 
 st.subheader("Plot")
 fig = plot_mean_scores(mean_scores, scale_min=scale_min, scale_max=scale_max)
