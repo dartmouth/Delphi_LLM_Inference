@@ -18,9 +18,11 @@ from lib.score_helper import (
     compute_percent_agreement,
     load_data,
     map_likert_to_numeric,
-    plot_mean_scores,
+    parse_question_id,
+    plot_answer_percentages,
     plot_question_ridgeline,
     select_question_columns,
+    split_header_rows,
 )
 
 st.set_page_config(page_title="Delphi Analysis 2", page_icon="📈")
@@ -41,6 +43,8 @@ try:
 except Exception as e:
     st.error(f"Could not read the file: {e}")
     st.stop()
+
+df_raw, group_map, _ = split_header_rows(df_raw)
 
 st.subheader("Preview")
 st.dataframe(df_raw.head())
@@ -99,18 +103,21 @@ if likert_map:
             for p, c in zip(percents[col], answer_counts[col])
         ]
     stats_table = stats_table.join(formatted)
+if group_map is not None:
+    stats_table.insert(0, "Question ID", stats_table.index)
+    stats_table.insert(0, "Group", group_map.reindex(stats_table.index).values)
+else:
+    ids = [parse_question_id(c) for c in stats_table.index]
+    stats_table.insert(0, "Question ID", [i[1] for i in ids])
+    stats_table.insert(0, "Group", [i[0] for i in ids])
 st.dataframe(stats_table)
 
 st.subheader("Plot")
-fig = plot_mean_scores(mean_scores, scale_min=scale_min, scale_max=scale_max)
-st.plotly_chart(fig, use_container_width=True)
-
-st.download_button(
-    "Download mean scores (CSV)",
-    mean_scores.to_csv().encode("utf-8"),
-    file_name="mean_scores.csv",
-    mime="text/csv",
-)
+if likert_map:
+    fig = plot_answer_percentages(percents, answer_counts)
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("Enable the Likert text mapping in the sidebar to plot answer percentages.")
 
 st.subheader("Rating distribution by question")
 st.sidebar.header("Consensus zone (for ridgeline colors)")

@@ -2,6 +2,8 @@
 # Helper functions for scoring Likert-scale survey responses and
 # plotting the mean agreement per question.
 # ------------------------------------------------------------
+import re
+
 import matplotlib.figure
 import numpy as np
 import pandas as pd
@@ -28,7 +30,55 @@ def load_data(file, sheet_name=0) -> pd.DataFrame:
 
 def select_question_columns(df: pd.DataFrame, prefix: str = "Q") -> list:
     """Return the columns whose name starts with the given prefix (default 'Q')."""
-    return [c for c in df.columns if isinstance(c, str) and c.startswith(prefix)]
+    return [
+        c
+        for c in df.columns
+        if isinstance(c, str) and c.startswith(prefix) and c != "Question ID"
+    ]
+
+
+def split_header_rows(df: pd.DataFrame):
+    """Handle sheets whose header row holds Group names, with a 'Question ID' row
+    and a question-text row beneath it, before the responses begin.
+
+    Returns (data, groups, question_ids). `data` has the Question IDs as column
+    names; `groups` and `question_ids` map those columns to their Group and ID.
+    If the layout isn't detected, returns (df, None, None) unchanged.
+    """
+    if df.shape[0] < 2 or df.shape[1] < 2:
+        return df, None, None
+    first_rows = df.iloc[0, :2].astype(str).str.strip().str.lower()
+    if "question id" not in first_rows.values:
+        return df, None, None
+    # Blank ID cells (e.g. the index column) fall back to the original header so
+    # column names stay real strings (NaN names break Streamlit's JSON preview).
+    ids = pd.Series(
+        [
+            str(v).strip() if pd.notna(v) and str(v).strip() else str(c)
+            for v, c in zip(df.iloc[0], df.columns)
+        ],
+        index=df.columns,
+    )
+    # pandas renames repeated headers to 'Name.1', 'Name.2', ...
+    groups = pd.Series(
+        [re.sub(r"\.\d+$", "", str(c)) for c in df.columns], index=df.columns
+    )
+    data = df.iloc[2:].reset_index(drop=True)
+    data.columns = ids.values
+    data = data.loc[:, ~data.columns.duplicated()]
+    groups.index = ids.values
+    groups = groups[~groups.index.duplicated()]
+    return data, groups, pd.Series(ids.values, index=ids.values)[data.columns]
+
+
+def parse_question_id(column: str) -> tuple:
+    """Split a column name such as 'Q2.3 Recording access' into (group, question_id),
+    e.g. ('Q2', 'Q2.3'). Without a sub-number the id doubles as the group."""
+    m = re.match(r"\s*(Q\s*\d+(?:[._-]\d+)*)", str(column), flags=re.I)
+    if not m:
+        return ("", "")
+    qid = re.sub(r"\s+", "", m.group(1))
+    return (re.split(r"[._-]", qid, maxsplit=1)[0], qid)
 
 
 def map_likert_to_numeric(df: pd.DataFrame, likert_map: dict = None) -> pd.DataFrame:
@@ -142,28 +192,31 @@ def plot_question_ridgeline(
     return fig
 
 
-def plot_mean_scores(
-    mean_scores: pd.Series,
-    scale_min: float = 1,
-    scale_max: float = 5,
+def plot_answer_percentages(
+    percents: pd.DataFrame,
+    counts: pd.DataFrame,
     title: str = "Consensus on Statements",
 ) -> go.Figure:
-    """Horizontal bar chart of mean Likert scores, annotated with the exact value."""
-    fig = go.Figure(
-        go.Bar(
-            x=mean_scores.values,
-            y=mean_scores.index,
-            orientation="h",
-            marker_color="#2a78d6",
-            text=[f"{v:.2f}" for v in mean_scores.values],
-            textposition="outside",
+    """Horizontal stacked bar chart of answer percentages per question, annotated with counts."""
+    fig = go.Figure()
+    for col in percents.columns:
+        pct = percents[col].fillna(0).astype(float)
+        fig.add_trace(
+            go.Bar(
+                x=pct,
+                y=percents.index,
+                orientation="h",
+                name=str(col),
+                text=[f"{p:.0f}% ({c})" if p >= 5 else "" for p, c in zip(pct, counts[col])],
+                textposition="inside",
+            )
         )
-    )
     fig.update_layout(
         title=title,
-        xaxis_title=f"Mean Likert Score ({scale_min:g} = lowest, {scale_max:g} = highest)",
+        barmode="stack",
+        xaxis_title="Share of answers (%)",
         yaxis_title="",
-        xaxis_range=[scale_min, scale_max * 1.1],
+        xaxis_range=[0, 100],
     )
     fig.update_yaxes(autorange="reversed")
     return fig
