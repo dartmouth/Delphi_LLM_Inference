@@ -84,12 +84,21 @@ if mean_scores.empty:
     st.stop()
 
 st.subheader("Statistics")
-stats_table = mean_scores.rename("Mean score").to_frame()
+stats_table = pd.DataFrame(index=mean_scores.index)
+stats_table["Total"] = df_raw[mean_scores.index.tolist()].notna().sum()
 if likert_map:
     categories = list(likert_map.keys())
     answer_counts = compute_answer_counts(df_raw[mean_scores.index.tolist()], categories)
+    stats_table["Total"] = answer_counts.sum(axis=1)
     stats_table["Most selected"] = compute_mode_answer(answer_counts)
-    stats_table = stats_table.join(answer_counts)
+    percents = answer_counts.div(stats_table["Total"].replace(0, pd.NA), axis=0) * 100
+    formatted = percents.copy().astype(object)
+    for col in answer_counts.columns:
+        formatted[col] = [
+            f"{p:.1f} % ({c})" if pd.notna(p) else f"0.0 % ({c})"
+            for p, c in zip(percents[col], answer_counts[col])
+        ]
+    stats_table = stats_table.join(formatted)
 st.dataframe(stats_table)
 
 st.subheader("Plot")

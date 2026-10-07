@@ -62,8 +62,8 @@ def compute_answer_counts(df: pd.DataFrame, categories: list) -> pd.DataFrame:
     answers for a question are filled with 0.
     """
     cleaned = df.apply(lambda col: col.map(lambda x: x.strip() if isinstance(x, str) else x))
-    counts = cleaned.apply(lambda col: col.value_counts())
-    return counts.reindex(categories).fillna(0).astype(int).T
+    counts = cleaned.apply(lambda col: col.value_counts().reindex(categories, fill_value=0))
+    return counts.astype(int).T
 
 
 def compute_mode_answer(answer_counts: pd.DataFrame) -> pd.Series:
