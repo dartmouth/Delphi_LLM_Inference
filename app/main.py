@@ -61,6 +61,7 @@ def get_llm(model_id: str, api_key: str, temperature: float):
         dartmouth_chat_api_key=api_key,
         temperature=temperature,
         max_tokens=max_tokens,
+        model_kwargs={"reasoning_effort": "medium"},
     )
 
 
@@ -92,12 +93,6 @@ with st.sidebar:
         index=default_index,
     )
     selected_model = models[selected_index]
-
-    if selected_model.description:
-        st.caption(selected_model.description)
-    if selected_model.capabilities:
-        st.caption("Capabilities: " + ", ".join(selected_model.capabilities))
-    st.caption(f"Hosted {'on-premises' if selected_model.is_local else 'by a third party'}")
 
     temperature = st.slider("Temperature", 0.0, 1.5, 0.7, 0.1)
 

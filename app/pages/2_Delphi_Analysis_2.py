@@ -11,6 +11,7 @@ import streamlit as st
 
 from lib.score_helper import (
     DEFAULT_LIKERT_MAP,
+    combine_categories,
     compute_answer_counts,
     compute_consensus_reached,
     compute_mean_scores,
@@ -93,15 +94,31 @@ stats_table["Total"] = df_raw[mean_scores.index.tolist()].notna().sum()
 if likert_map:
     categories = list(likert_map.keys())
     answer_counts = compute_answer_counts(df_raw[mean_scores.index.tolist()], categories)
+    with st.expander("Combine answer categories"):
+        n_groups = st.number_input("Number of combined groups", 0, 5, 0, step=1)
+        groups, used = [], set()
+        for i in range(int(n_groups)):
+            members = st.multiselect(
+                f"Group {i + 1}",
+                [c for c in categories if c not in used],
+                key=f"combine_group_{i}",
+                help="Pick two or more categories to merge into one column.",
+            )
+            used.update(members)
+            groups.append(members)
+        if groups:
+            answer_counts = combine_categories(answer_counts, groups)
     stats_table["Total"] = answer_counts.sum(axis=1)
     stats_table["Most selected"] = compute_mode_answer(answer_counts)
     percents = answer_counts.div(stats_table["Total"].replace(0, pd.NA), axis=0) * 100
+    show_count = st.toggle("Show count", value=False)
     formatted = percents.copy().astype(object)
     for col in answer_counts.columns:
-        formatted[col] = [
-            f"{p:.1f} % ({c})" if pd.notna(p) else f"0.0 % ({c})"
-            for p, c in zip(percents[col], answer_counts[col])
-        ]
+        pcts = percents[col].fillna(0.0).astype(float)
+        if show_count:
+            formatted[col] = [f"{p:.1f}% ({c})" for p, c in zip(pcts, answer_counts[col])]
+        else:
+            formatted[col] = [f"{p:.1f}%" for p in pcts]
     stats_table = stats_table.join(formatted)
 if group_map is not None:
     stats_table.insert(0, "Question ID", stats_table.index)

@@ -116,6 +116,29 @@ def compute_answer_counts(df: pd.DataFrame, categories: list) -> pd.DataFrame:
     return counts.astype(int).T
 
 
+def combine_categories(answer_counts: pd.DataFrame, groups: list[list[str]]) -> pd.DataFrame:
+    """Merge category columns by summing counts.
+
+    Each entry in `groups` is a list of categories to combine into one column,
+    named by joining the members with ' + '. Groups with fewer than two members
+    are ignored. Uncombined categories are kept. Column order follows the first
+    appearance of each category (or group) in the original order.
+    """
+    original = list(answer_counts.columns)
+    member_to_group = {}
+    for members in groups:
+        if len(members) < 2:
+            continue
+        label = " + ".join(sorted(members, key=original.index))
+        for m in members:
+            member_to_group[m] = label
+    combined = {}
+    for cat in original:
+        label = member_to_group.get(cat, cat)
+        combined[label] = combined.get(label, 0) + answer_counts[cat]
+    return pd.DataFrame(combined, index=answer_counts.index).astype(int)
+
+
 def compute_mode_answer(answer_counts: pd.DataFrame) -> pd.Series:
     """Most-selected category per question, formatted as 'Category (count/total)'.
 
