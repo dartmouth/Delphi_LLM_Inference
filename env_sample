@@ -1,0 +1,2 @@
+# create .env file and use this content
+DARTMOUTH_CHAT_API_KEY=<dartmouth_api_key>
