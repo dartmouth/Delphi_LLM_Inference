@@ -8,3 +8,6 @@ openpyxl
 plotly
 matplotlib
 seaborn
+langchain-mcp-adapters
+langgraph
+mcp

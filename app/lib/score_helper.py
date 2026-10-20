@@ -151,6 +151,54 @@ def compute_mode_answer(answer_counts: pd.DataFrame) -> pd.Series:
     return top_category + " (" + top_count.astype(str) + "/" + totals.astype(str) + ")"
 
 
+def build_stats_table(
+    df_raw: pd.DataFrame,
+    questions: list,
+    likert_map: dict = None,
+    group_map: pd.Series = None,
+    combine_groups: list = None,
+    show_count: bool = False,
+):
+    """Build the per-question statistics table shown on the Delphi Analysis 2 page.
+
+    `questions` are the columns of `df_raw` to summarise. With a `likert_map`
+    the table holds Total, Most selected and one percentage column per answer
+    category (optionally merged via `combine_groups`; with `show_count` each cell
+    reads '40.0% (4)'). Without one it only holds the Total of non-missing answers.
+    Group / Question ID columns are prepended from `group_map` when given,
+    otherwise parsed from the column names.
+
+    Returns (stats_table, percents, answer_counts); the last two are None
+    when there is no `likert_map`.
+    """
+    stats_table = pd.DataFrame(index=pd.Index(questions))
+    stats_table["Total"] = df_raw[list(questions)].notna().sum()
+    percents = answer_counts = None
+    if likert_map:
+        answer_counts = compute_answer_counts(df_raw[list(questions)], list(likert_map.keys()))
+        if combine_groups:
+            answer_counts = combine_categories(answer_counts, combine_groups)
+        stats_table["Total"] = answer_counts.sum(axis=1)
+        stats_table["Most selected"] = compute_mode_answer(answer_counts)
+        percents = answer_counts.div(stats_table["Total"].replace(0, pd.NA), axis=0) * 100
+        formatted = percents.copy().astype(object)
+        for col in answer_counts.columns:
+            pcts = percents[col].fillna(0.0).astype(float)
+            if show_count:
+                formatted[col] = [f"{p:.1f}% ({c})" for p, c in zip(pcts, answer_counts[col])]
+            else:
+                formatted[col] = [f"{p:.1f}%" for p in pcts]
+        stats_table = stats_table.join(formatted)
+    if group_map is not None:
+        stats_table.insert(0, "Question ID", stats_table.index)
+        stats_table.insert(0, "Group", group_map.reindex(stats_table.index).values)
+    else:
+        ids = [parse_question_id(c) for c in stats_table.index]
+        stats_table.insert(0, "Question ID", [i[1] for i in ids])
+        stats_table.insert(0, "Group", [i[0] for i in ids])
+    return stats_table, percents, answer_counts
+
+
 def compute_percent_agreement(
     df_num: pd.DataFrame, consensus_lo: float, consensus_hi: float
 ) -> pd.Series:
